@@ -112,6 +112,28 @@
     return null;
   }
 
+  // ---------- Cardmarket (scellé) : fichiers mis à jour chaque jour par GitHub ----------
+  let cmPrices = null, cmCatalogue = null;
+  async function loadJson(path) {
+    const r = await fetch(path + '?t=' + Date.now(), { cache: 'no-store' });
+    if (!r.ok) { const e = new Error('HTTP ' + r.status); e.status = r.status; throw e; }
+    return r.json();
+  }
+  async function cmLoadPrices(force) {
+    if (!cmPrices || force) cmPrices = await loadJson('./data/prix.json');
+    return cmPrices;
+  }
+  async function cmLoadCatalogue() {
+    if (!cmCatalogue) cmCatalogue = await loadJson('./data/scelle.json');
+    return cmCatalogue;
+  }
+  function cmPrice(prices, id) {
+    const row = prices && prices.p && prices.p[id];
+    if (!row) return null;
+    for (const v of row) if (typeof v === 'number' && v > 0) return { price: round2(v), source: 'Cardmarket', updated: prices.source || prices.date };
+    return null;
+  }
+
   // ---------- Valeur ----------
   function round2(n) { return Math.round(n * 100) / 100; }
   function unitValue(it) {
@@ -157,7 +179,19 @@
     const date = today();
     const usdRate = await getMeta('usdRate', 0.86);
     const items = await getAll('items');
-    const linked = items.filter(it => it.tcgdexId && (it.priceMode === 'auto' || it.priceMode === 'coef'));
+    const isAuto = it => it.priceMode === 'auto' || it.priceMode === 'coef';
+    const linked = items.filter(it => it.tcgdexId && isAuto(it));
+    const cmItems = items.filter(it => it.cmId && isAuto(it));
+    let cmOk = 0, cmFail = 0;
+    if (cmItems.length) {
+      let prices = null;
+      try { prices = await cmLoadPrices(true); } catch (e) { /* hors ligne ou fichier absent */ }
+      for (const it of cmItems) {
+        const pr = prices ? cmPrice(prices, it.cmId) : null;
+        if (pr) { it.autoPrice = pr.price; it.priceSource = pr.source; it.priceUpdated = pr.updated; it.priceStatus = 'ok'; cmOk++; }
+        else { it.priceStatus = prices ? 'none' : 'error'; cmFail++; }
+      }
+    }
     const cache = new Map();
     let ok = 0, fail = 0, done = 0;
     const queue = linked.slice();
@@ -184,12 +218,12 @@
     const t = await writeSnapshot(items, date);
     await setMeta('lastUpdate', new Date().toISOString());
     await setMeta('lastUpdateDay', date);
-    return { ok, fail, linked: linked.length, totals: t };
+    return { ok: ok + cmOk, fail: fail + cmFail, linked: linked.length + cmItems.length, totals: t };
   }
 
   root.Core = {
     today, openDb, getAll, put, putMany, del, clear, getMeta, setMeta,
-    searchCards, getCard, imageUrl, priceFromCard,
+    searchCards, getCard, imageUrl, priceFromCard, cmLoadPrices, cmLoadCatalogue, cmPrice,
     unitValue, lineValue, lineCost, totals, stampHistory, writeSnapshot, updateAll, round2
   };
 })(typeof self !== 'undefined' ? self : this);

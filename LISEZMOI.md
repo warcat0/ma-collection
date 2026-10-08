@@ -1,34 +1,35 @@
-# Ma collection Pokémon : installation gratuite
+# Ma collection Pokémon : mise à jour v2 (prix automatiques du scellé)
 
-L'appli est un site web installable. Il faut l'héberger une fois (gratuit, sur GitHub Pages), puis l'installer sur ton téléphone comme une vraie appli.
+## Ce qui change
+- **Scellé** : tu cherches ton produit dans le catalogue Cardmarket (en français ou en anglais : « display 151 », « ETB évolutions prismatiques »). Son prix se met ensuite à jour tout seul chaque jour.
+- **Cartes gradées** : tu indiques une seule fois ce que vaut ta gradée. L'appli en déduit un coefficient par rapport au prix de la carte, puis la valeur suit le marché chaque jour.
+- **Cartes** : rien ne change, le prix reste automatique.
 
-## 1. Créer un compte GitHub (gratuit)
-Va sur https://github.com et crée un compte.
+Le prix du scellé vient des fichiers publics et gratuits de Cardmarket. Un petit robot GitHub, gratuit lui aussi, les télécharge chaque matin vers 7 h et les range dans ton dépôt.
 
-## 2. Créer le dépôt
-1. Appuie sur le bouton **+**, puis sur **New repository**.
-2. Nom : `ma-collection`. Laisse le dépôt en **Public**. Seul le code de l'appli est public : ta collection reste stockée sur ton téléphone et n'est jamais envoyée.
-3. Appuie sur **Create repository**.
+## Mettre à jour ton dépôt (une seule fois)
+1. Décompresse le zip sur ton ordinateur.
+2. Ouvre https://github.com/warcat0/ma-collection, puis **Add file → Upload files**.
+3. Glisse **tout le contenu** du dossier décompressé dans la page, dossiers `.github` et `scripts` compris, puis clique sur **Commit changes**. Les anciens fichiers sont remplacés.
+4. Vérifie que ces deux fichiers apparaissent bien dans le dépôt :
+   - `.github/workflows/prix.yml`
+   - `scripts/maj-prix.mjs`
 
-## 3. Envoyer les fichiers
-1. Décompresse le zip (sur Android, l'appli Fichiers sait le faire).
-2. Dans le dépôt, appuie sur **Add file**, puis sur **Upload files**.
-3. Sélectionne ces 7 fichiers : `index.html`, `app.js`, `core.js`, `sw.js`, `manifest.webmanifest`, `icon-192.png` et `icon-512.png`.
-4. Appuie sur **Commit changes**.
+   S'il en manque un, utilise **Add file → Create new file**. Tape le chemin exact comme nom (par exemple `.github/workflows/prix.yml`), colle le contenu du fichier, puis clique sur **Commit**.
 
-## 4. Mettre l'appli en ligne
-1. Dans le dépôt, va dans **Settings**, puis dans **Pages**.
-2. Sous **Branch**, choisis **main**, puis le dossier **/ (root)**, et appuie sur **Save**.
-3. Attends une à deux minutes. L'adresse s'affiche alors : `https://TON-PSEUDO.github.io/ma-collection/`
+## Lancer le premier relevé de prix
+1. Ouvre https://github.com/warcat0/ma-collection/actions
+2. À gauche, clique sur **Prix du jour**, puis à droite sur **Run workflow**, puis sur le bouton vert **Run workflow**.
+3. Attends environ une minute que la coche verte apparaisse. Un dossier `data` est alors créé dans ton dépôt.
 
-## 5. Installer sur Android
-1. Ouvre cette adresse dans **Chrome**.
-2. Appuie sur le menu **⋮**, puis sur **Installer l'application** (ou **Ajouter à l'écran d'accueil**).
+Ensuite, tout se fait automatiquement chaque jour. Tu n'as plus rien à faire.
 
-L'icône apparaît alors avec tes autres applis.
+## Dans l'appli
+- Ferme l'appli complètement, puis rouvre-la pour charger la nouvelle version.
+- Pour un scellé déjà saisi à la main : ouvre-le, touche **Modifier**, puis **Chercher le produit dans le catalogue**.
+- Pour une gradée déjà saisie : touche **Modifier**, choisis **Automatique : prix de la carte × coefficient** et indique sa valeur actuelle.
 
 ## Bon à savoir
-- **Prix des cartes** : ils sont mis à jour automatiquement une fois par jour, à la première ouverture. Une fois l'appli installée, Chrome peut aussi les mettre à jour appli fermée, et c'est Android qui choisit le moment.
-- **Gradées et scellé** : tu saisis le prix toi-même. L'appli le reporte chaque jour dans le total et le graphique.
-- **Sauvegarde** : va dans Réglages, puis Exporter, et garde le fichier sur Google Drive. Pense à le faire régulièrement, car tes données ne sont que sur ton téléphone.
-- **Prix « tendance » Cardmarket** : il est fourni par TCGdex et calculé toutes langues confondues. Pour une langue qui se vend plus cher ou moins cher, utilise le mode « prix × coefficient » ou le prix saisi.
+- Les noms du catalogue Cardmarket sont en anglais. Les noms français les plus courants (displays, ETB, noms des extensions) sont traduits automatiquement pendant la recherche.
+- Le prix Cardmarket est une moyenne toutes langues confondues. Si ton scellé français vaut plus ou moins cher, choisis **Automatique × coefficient** (par exemple ×1,15).
+- **Sauvegarde** : va dans Réglages, puis Exporter, de temps en temps.

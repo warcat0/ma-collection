@@ -1,7 +1,7 @@
 /* Service worker : fonctionnement hors ligne + mise à jour quotidienne en arrière-plan. */
 importScripts('./core.js');
 
-const CACHE = 'collection-v1';
+const CACHE = 'collection-v2';
 const SHELL = ['./', './index.html', './app.js', './core.js', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {
@@ -20,6 +20,16 @@ self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET') return;
   // Fichiers de l'appli : réseau d'abord (pour recevoir les mises à jour), cache si hors ligne.
+  // Fichiers de prix : toujours le réseau, copie de secours sans paramètre pour le mode hors ligne.
+  if (url.origin === self.location.origin && url.pathname.includes('/data/')) {
+    const key = url.origin + url.pathname;
+    e.respondWith(
+      fetch(e.request)
+        .then(r => { if (r.ok) { const copy = r.clone(); caches.open(CACHE).then(c => c.put(key, copy)); } return r; })
+        .catch(() => caches.match(key).then(r => r || Response.error()))
+    );
+    return;
+  }
   if (url.origin === self.location.origin) {
     e.respondWith(
       fetch(e.request)

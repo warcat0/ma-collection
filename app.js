@@ -384,12 +384,12 @@
     openSheet('Ajouter', body => {
       body.innerHTML = '<div class="label">Que veux-tu ajouter ?</div><div class="pick3">' +
         pick('raw', 'Carte', 'Carte non gradée, avec prix Cardmarket automatique') +
-        pick('graded', 'Carte gradée', 'PSA, PCA, CCC, CGC… prix saisi ou calculé') +
-        pick('sealed', 'Produit scellé', 'Display, ETB, coffret, booster… prix saisi') + '</div>';
+        pick('graded', 'Carte gradée', 'PSA, PCA, CCC, CGC… suit le prix de la carte') +
+        pick('sealed', 'Produit scellé', 'Display, ETB, coffret, booster… prix Cardmarket automatique') + '</div>';
       body.querySelectorAll('[data-pick]').forEach(b => b.onclick = () => {
         const cat = b.dataset.pick;
         const draft = newDraft(cat);
-        if (cat === 'sealed') openSheet('Produit scellé', bd => renderForm(bd, draft, false));
+        if (cat === 'sealed') openSheet('Chercher le produit', bd => renderSealedSearch(bd, draft, false));
         else openSheet(cat === 'raw' ? 'Chercher la carte' : 'Chercher la carte gradée', bd => renderSearch(bd, draft, false));
       });
     });
@@ -399,7 +399,7 @@
     return {
       id: null, cat, name: '', lang: 'fr', setName: '', number: '', rarity: '', image: '', tcgdexId: null, tcgdexLang: null,
       variant: 'normal', qty: 1, buyPrice: null, buyDate: '', notes: '', grader: 'PSA', grade: '10', cert: '',
-      sealedType: SEALED_TYPES[0], priceMode: cat === 'raw' ? 'auto' : 'manual', coef: cat === 'graded' ? 3 : 1, manualPrice: null, history: []
+      sealedType: SEALED_TYPES[0], cmId: null, priceMode: cat === 'raw' || cat === 'sealed' ? 'auto' : 'coef', coef: cat === 'graded' ? 3 : 1, manualPrice: null, history: []
     };
   }
 
@@ -470,13 +470,88 @@
     if (draft.cat === 'raw') draft.priceMode = 'auto';
   }
 
+  // ---------- Ajout : recherche d'un produit scellé (catalogue Cardmarket) ----------
+  const FR_EN = [
+    ['coffret dresseur d elite', 'elite trainer box'], ['dresseur d elite', 'elite trainer box'], ['etb', 'elite trainer box'],
+    ['display', 'booster box'], ['boite de boosters', 'booster box'], ['tripack', '3 pack'], ['tri pack', '3 pack'],
+    ['pokebox', 'tin'], ['mini tin', 'mini tin'], ['coffret collection premium', 'premium collection'], ['coffret', 'box'],
+    ['ecarlate et violet', 'scarlet violet'], ['epee et bouclier', 'sword shield'], ['soleil et lune', 'sun moon'],
+    ['mega evolution', 'mega evolution'], ['evolutions prismatiques', 'prismatic evolutions'], ['flammes obsidiennes', 'obsidian flames'],
+    ['destinees de paldea', 'paldean fates'], ['evolutions a paldea', 'paldea evolved'], ['faille paradoxe', 'paradox rift'],
+    ['forces temporelles', 'temporal forces'], ['mascarade crepusculaire', 'twilight masquerade'], ['fable nebuleuse', 'shrouded fable'],
+    ['couronne stellaire', 'stellar crown'], ['etincelles deferlantes', 'surging sparks'], ['aventures ensemble', 'journey together'],
+    ['rivalites destinees', 'destined rivals'], ['foudre noire', 'black bolt'], ['flamme blanche', 'white flare'],
+    ['zenith supreme', 'crown zenith'], ['origine perdue', 'lost origin'], ['tempete argentee', 'silver tempest'],
+    ['astres radieux', 'astral radiance'], ['stars etincelantes', 'brilliant stars'], ['poing de fusion', 'fusion strike'],
+    ['evolution celeste', 'evolving skies'], ['regne de glace', 'chilling reign'], ['styles de combat', 'battle styles'],
+    ['destinees radieuses', 'shining fates'], ['voltage eclatant', 'vivid voltage'], ['tenebres embrasees', 'darkness ablaze'],
+    ['clash des rebelles', 'rebel clash'], ['la voie du maitre', 'champion s path'], ['celebrations', 'celebrations']
+  ];
+  const norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+  function sealedMatch(rows, query) {
+    let q = ' ' + norm(query) + ' ';
+    for (const [fr, en] of FR_EN) q = q.replace(' ' + fr + ' ', ' ' + en + ' ');
+    const toks = q.trim().split(' ').filter(Boolean);
+    if (!toks.length) return [];
+    const out = [];
+    for (const r of rows) {
+      const hay = ' ' + norm(r[1] + ' ' + r[2]) + ' ';
+      if (toks.every(t => hay.includes(t))) { out.push(r); if (out.length >= 80) break; }
+    }
+    return out;
+  }
+  function renderSealedSearch(body, draft, isEdit) {
+    body.innerHTML =
+      '<form id="pForm" class="searchrow"><input type="search" id="pQ" autocomplete="off" placeholder="ex. display 151, ETB flammes obsidiennes" value="' + esc(draft._q || '') + '" aria-label="Nom du produit"><button class="btn primary" type="submit">Chercher</button></form>' +
+      '<div id="pMsg" class="muted" style="font-size:13.5px">Chargement du catalogue Cardmarket…</div>' +
+      '<div class="list" id="pRes" hidden></div>' +
+      '<button class="btn block" id="pManual">Je ne trouve pas mon produit : saisie manuelle</button>';
+    let rows = null, prices = null;
+    const show = () => {
+      if (!rows) return;
+      const q = $('pQ').value.trim(); draft._q = q;
+      if (!q) { $('pMsg').textContent = 'Tape le type et l\'extension, en français ou en anglais : « display 151 », « ETB évolutions prismatiques », « booster box surging sparks ».'; $('pRes').hidden = true; return; }
+      const res = sealedMatch(rows, q);
+      if (!res.length) { $('pMsg').textContent = 'Aucun produit trouvé. Essaie le nom anglais de l\'extension, moins de mots, ou la saisie manuelle.'; $('pRes').hidden = true; return; }
+      $('pMsg').textContent = res.length >= 80 ? 'Plus de 80 résultats : ajoute un mot pour préciser.' : res.length + ' résultat' + (res.length > 1 ? 's' : '') + '. Touche ton produit.';
+      $('pRes').hidden = false;
+      $('pRes').innerHTML = res.map(r => {
+        const pr = Core.cmPrice(prices, r[0]);
+        return '<button class="row" data-pid="' + r[0] + '" style="grid-template-columns:minmax(0,1fr) auto"><span style="min-width:0;display:grid;gap:2px"><span class="t" style="white-space:normal">' + esc(r[1]) + '</span><span class="sub">' + esc(r[2]) + '</span></span><span class="v">' + (pr ? fmt(pr.price) : '<small>sans prix</small>') + '</span></button>';
+      }).join('');
+    };
+    $('pForm').addEventListener('submit', e => { e.preventDefault(); show(); });
+    let t; $('pQ').addEventListener('input', () => { clearTimeout(t); t = setTimeout(show, 200); });
+    $('pRes').addEventListener('click', e => {
+      const b = e.target.closest('[data-pid]'); if (!b) return;
+      const r = rows.find(x => String(x[0]) === b.dataset.pid); if (!r) return;
+      draft.cmId = r[0]; draft.name = r[1]; draft.sealedType = r[2] || draft.sealedType;
+      draft._cmPrice = Core.cmPrice(prices, r[0]);
+      if (draft.priceMode === 'manual' && !isEdit) draft.priceMode = 'auto';
+      if (!isEdit) draft.priceMode = 'auto';
+      replaceSheet(isEdit ? 'Modifier' : 'Produit scellé', bd => renderForm(bd, draft, isEdit));
+    });
+    $('pManual').onclick = () => {
+      draft.cmId = null; draft._cmPrice = null; draft.priceMode = 'manual';
+      replaceSheet(isEdit ? 'Modifier' : 'Saisie manuelle', bd => renderForm(bd, draft, isEdit));
+    };
+    Promise.all([Core.cmLoadCatalogue(), Core.cmLoadPrices().catch(() => null)]).then(([cat, pr]) => {
+      rows = (cat && cat.rows) || []; prices = pr;
+      show(); $('pQ').focus();
+    }).catch(() => {
+      $('pMsg').textContent = 'Le catalogue des produits scellés n\'est pas encore disponible. Il est créé par la mise à jour quotidienne sur GitHub (voir le guide, étape « Prix du jour »). En attendant, utilise la saisie manuelle.';
+    });
+  }
+
   // ---------- Ajout / modification : formulaire ----------
   function renderForm(body, d, isEdit) {
     const card = d._card;
     const linked = !!d.tcgdexId;
     const pN = card ? Core.priceFromCard(card, 'normal', S.usdRate) : null;
     const pH = card ? Core.priceFromCard(card, 'holo', S.usdRate) : null;
-    const curAuto = card ? (Core.priceFromCard(card, d.variant, S.usdRate) || {}).price : d.autoPrice;
+    const cmLinked = d.cat === 'sealed' && !!d.cmId;
+    const cmP = cmLinked ? (d._cmPrice !== undefined ? d._cmPrice : (d.autoPrice != null ? { price: d.autoPrice } : null)) : null;
+    const curAuto = card ? (Core.priceFromCard(card, d.variant, S.usdRate) || {}).price : cmLinked ? (cmP ? cmP.price : null) : d.autoPrice;
     let h = '';
 
     if (d.cat !== 'sealed') {
@@ -495,8 +570,14 @@
       }
     }
 
-    if (d.cat === 'sealed') {
-      h += '<label class="field"><span>Type de produit</span><select id="fSType">' + SEALED_TYPES.map(t => '<option' + (t === d.sealedType ? ' selected' : '') + '>' + esc(t) + '</option>').join('') + '</select></label>' +
+    if (d.cat === 'sealed' && cmLinked) {
+      h += '<div class="panel" style="display:grid;gap:4px"><b style="font-size:16px">' + esc(d.name) + '</b><span class="muted">' + esc(d.sealedType || '') + '</span>' +
+        '<span>' + (cmP ? 'Cardmarket aujourd\'hui : ' + fmt(cmP.price) : '<span class="muted">Pas de prix Cardmarket pour ce produit pour l\'instant</span>') + '</span>' +
+        '<button class="btn" type="button" id="fChange" style="justify-self:start;margin-top:6px;min-height:36px;padding:6px 12px">Changer de produit</button></div>' +
+        '<label class="field"><span>Langue</span><select id="fLang">' + LANGS.map(l => '<option value="' + l.code + '"' + (l.code === d.lang ? ' selected' : '') + '>' + l.name + '</option>').join('') + '</select></label>';
+    } else if (d.cat === 'sealed') {
+      h += '<button class="btn" type="button" id="fChange">Chercher le produit dans le catalogue (prix automatique)</button>' +
+        '<label class="field"><span>Type de produit</span><select id="fSType">' + SEALED_TYPES.map(t => '<option' + (t === d.sealedType ? ' selected' : '') + '>' + esc(t) + '</option>').join('') + '</select></label>' +
         '<label class="field"><span>Nom du produit</span><input type="text" id="fName" value="' + esc(d.name) + '" placeholder="ex. Display Écarlate et Violet 151"></label>' +
         '<label class="field"><span>Extension</span><input type="text" id="fSet" value="' + esc(d.setName) + '" placeholder="ex. 151"></label>' +
         '<label class="field"><span>Langue</span><select id="fLang">' + LANGS.map(l => '<option value="' + l.code + '"' + (l.code === d.lang ? ' selected' : '') + '>' + l.name + '</option>').join('') + '</select></label>';
@@ -522,12 +603,18 @@
       if (linked) modes.push(['coef', 'Automatique × coefficient', 'Pour une langue qui se vend plus ou moins cher. Ex. ×1,2 = 20 % de plus']);
       modes.push(['manual', 'Je saisis le prix', 'Le prix reste fixe jusqu\'à ta prochaine modification']);
     } else if (d.cat === 'graded') {
-      modes.push(['manual', 'Je saisis le prix', 'Le plus fiable : regarde les dernières ventes eBay de cette note']);
-      if (linked) modes.push(['coef', 'Prix de la carte × coefficient', 'Suit le marché tous les jours. Ex. ×3 si ta PSA 10 vaut environ 3 fois la carte nue']);
+      if (linked) modes.push(['coef', 'Automatique : prix de la carte × coefficient', 'Tu indiques une fois ce que vaut ta gradée, ensuite elle suit le marché chaque jour']);
+      modes.push(['manual', 'Je saisis le prix', 'Le prix reste fixe jusqu\'à ta prochaine modification']);
+    } else if (d.cat === 'sealed') {
+      if (cmLinked) modes.push(['auto', 'Automatique', 'Prix tendance Cardmarket, mis à jour chaque jour']);
+      if (cmLinked) modes.push(['coef', 'Automatique × coefficient', 'Si la version française se vend plus ou moins cher. Ex. ×1,15 = 15 % de plus']);
+      modes.push(['manual', 'Je saisis le prix', 'Le prix reste fixe jusqu\'à ta prochaine modification']);
     }
+    if (!modes.some(m => m[0] === d.priceMode)) d.priceMode = modes[0][0];
     if (modes.length > 1) h += '<div class="field"><span>Prix</span><div class="radio">' + modes.map(m => radio('fMode', m[0], d.priceMode, m[1], m[2])).join('') + '</div></div>';
     else d.priceMode = modes.length ? modes[0][0] : 'manual';
 
+    if (d.cat === 'graded') h += '<label class="field" id="wGVal"><span>Combien vaut ta carte gradée aujourd\'hui ? (€)</span><input type="text" inputmode="decimal" id="fGVal" placeholder="ex. 350, d\'après une vente eBay récente"><small>Le coefficient se calcule tout seul. Tu n\'auras plus à y toucher.</small></label>';
     h += '<label class="field" id="wCoef"><span>Coefficient</span><input type="text" inputmode="decimal" id="fCoef" value="' + esc(String(d.coef).replace('.', ',')) + '"><small id="coefHint"></small></label>';
     h += '<label class="field" id="wManual"><span id="manualLbl">Prix actuel (unité, en €)</span><input type="text" inputmode="decimal" id="fManual" value="' + (d.manualPrice != null ? esc(String(d.manualPrice).replace('.', ',')) : '') + '" placeholder="ex. 120"><small id="manualHint"></small></label>';
 
@@ -546,12 +633,17 @@
       const variant = getRadio('fVar') || d.variant;
       const auto = card ? (Core.priceFromCard(card, variant, S.usdRate) || {}).price : curAuto;
       $('wCoef').hidden = mode !== 'coef';
+      if ($('wGVal')) {
+        $('wGVal').hidden = mode !== 'coef' || auto == null;
+        const gv = num(val('fGVal'));
+        if (gv && auto && document.activeElement === $('fGVal')) $('fCoef').value = String(Core.round2(gv / auto)).replace('.', ',');
+      }
       $('wManual').hidden = false;
       if (mode === 'coef') {
         const c = num(val('fCoef')) || 1;
-        $('coefHint').textContent = auto != null ? fmt(auto) + ' × ' + String(c).replace('.', ',') + ' = ' + fmt(auto * c) + ' aujourd\'hui' : 'Pas de prix pour cette carte : le prix saisi ci-dessous sera utilisé.';
+        $('coefHint').textContent = auto != null ? (d.cat === 'sealed' ? 'Prix Cardmarket ' : 'Prix de la carte ') + fmt(auto) + ' × ' + String(c).replace('.', ',') + ' = ' + fmt(auto * c) + ' aujourd\'hui' : 'Pas de prix automatique : le prix saisi ci-dessous sera utilisé.';
         $('manualLbl').textContent = 'Prix de secours (unité, en €, optionnel)';
-        $('manualHint').textContent = 'Utilisé seulement si le prix de la carte est introuvable.';
+        $('manualHint').textContent = 'Utilisé seulement si le prix automatique est introuvable.';
       } else if (mode === 'auto') {
         $('manualLbl').textContent = 'Prix de secours (unité, en €, optionnel)';
         $('manualHint').textContent = auto != null ? 'Prix automatique aujourd\'hui : ' + fmt(auto) + '. Ce champ sert seulement si le prix devient introuvable.' : 'Pas de prix automatique pour cette carte : saisis un prix ici.';
@@ -565,7 +657,8 @@
     const ch = $('fChange');
     if (ch) ch.onclick = () => {
       collect();
-      replaceSheet(d.cat === 'raw' ? 'Chercher la carte' : 'Chercher la carte gradée', bd => renderSearch(bd, d, isEdit));
+      if (d.cat === 'sealed') replaceSheet('Chercher le produit', bd => renderSealedSearch(bd, d, isEdit));
+      else replaceSheet(d.cat === 'raw' ? 'Chercher la carte' : 'Chercher la carte gradée', bd => renderSearch(bd, d, isEdit));
     };
 
     function collect() {
@@ -592,6 +685,7 @@
       const err = $('fErr');
       if (!d.name) { err.hidden = false; err.textContent = 'Indique un nom.'; return; }
       if (d.priceMode === 'manual' && d._newManual == null) { err.hidden = false; err.textContent = 'Indique le prix actuel (tu pourras le modifier plus tard).'; return; }
+      if (d.priceMode !== 'manual' && curAuto == null && !card && d._newManual == null) { err.hidden = false; err.textContent = 'Pas encore de prix automatique : indique un prix de secours.'; return; }
       const it = Object.assign({}, d);
       if (it._newManual !== it.manualPrice) it.manualUpdated = new Date().toISOString();
       it.manualPrice = it._newManual;
@@ -600,8 +694,13 @@
         if (pr) { it.autoPrice = pr.price; it.priceSource = pr.source; it.priceUpdated = pr.updated || new Date().toISOString(); it.priceStatus = 'ok'; }
         else { it.autoPrice = null; it.priceStatus = 'none'; }
       }
-      if (!it.tcgdexId) { it.autoPrice = null; if (it.priceMode !== 'manual' && it.cat !== 'sealed') it.priceMode = 'manual'; }
-      delete it._card; delete it._newManual;
+      if (it.cmId && it.cat === 'sealed') {
+        const pr = it._cmPrice !== undefined ? it._cmPrice : (it.autoPrice != null ? { price: it.autoPrice, source: it.priceSource, updated: it.priceUpdated } : null);
+        if (pr) { it.autoPrice = pr.price; it.priceSource = 'Cardmarket'; it.priceUpdated = pr.updated || new Date().toISOString(); it.priceStatus = 'ok'; }
+        else { it.autoPrice = null; it.priceStatus = 'none'; }
+      }
+      if (!it.tcgdexId && !it.cmId) { it.autoPrice = null; it.priceMode = 'manual'; }
+      delete it._card; delete it._newManual; delete it._cmPrice; delete it._q;
       if (!it.id) { it.id = uid(); it.addedAt = new Date().toISOString(); it.history = []; }
       await saveItemAndSnapshot(it);
       closeAllSheets();
